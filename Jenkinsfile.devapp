@@ -1,0 +1,51 @@
+pipeline {
+    agent any
+
+    environment {
+        ANDROID_HOME = "${env.HOME}/android-sdk"
+        PATH = "${env.PATH}:${env.HOME}/android-sdk/platform-tools:${env.HOME}/android-sdk/cmdline-tools/latest/bin"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Setup Android SDK') {
+            steps {
+                sh '''
+                    if ! command -v sdkmanager &>/dev/null; then
+                        mkdir -p $HOME/android-sdk/cmdline-tools
+                        cd /tmp
+                        curl -s -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+                        unzip -q cmdline-tools.zip -d $HOME/android-sdk/cmdline-tools/
+                        mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest 2>/dev/null || true
+                    fi
+                    yes | sdkmanager --licenses --sdk_root=$HOME/android-sdk > /dev/null 2>&1 || true
+                    sdkmanager --sdk_root=$HOME/android-sdk "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
+                '''
+            }
+        }
+
+        stage('Build APK') {
+            steps {
+                sh 'chmod +x ./gradlew'
+                sh './gradlew assembleDebug --no-daemon'
+            }
+        }
+
+        stage('Archive APK') {
+            steps {
+                archiveArtifacts artifacts: 'app/build/outputs/apk/debug/**/*.apk', allowEmptyArchive: true
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Build completed: ${currentBuild.result ?: 'SUCCESS'}"
+        }
+    }
+}
